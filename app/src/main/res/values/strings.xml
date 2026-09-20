@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">ProofStamp</string>
+
+    <!-- Navigation -->
+    <string name="nav_camera">Camera</string>
+    <string name="nav_gallery">Gallery</string>
+    <string name="nav_sessions">Sessions</string>
+    <string name="nav_verify">Verify</string>
+    <string name="nav_settings">Settings</string>
+
+    <!-- Camera -->
+    <string name="camera_permission_title">Camera access needed</string>
+    <string name="camera_permission_body">ProofStamp needs the camera to capture verifiable evidence photos. Nothing is uploaded — everything stays on your device.</string>
+    <string name="grant_permission">Grant permission</string>
+    <string name="open_settings">Open app settings</string>
+    <string name="capture">Capture</string>
+    <string name="flip_camera">Flip camera</string>
+    <string name="toggle_flash">Toggle flash</string>
+    <string name="toggle_gps">Toggle GPS</string>
+    <string name="start_session">Start session</string>
+    <string name="end_session">End session</string>
+    <string name="session_name_hint">e.g. Inspeksi RW 01</string>
+    <string name="locating">Locating…</string>
+    <string name="gps_off">GPS off</string>
+    <string name="processing">Sealing photo…</string>
+
+    <!-- Quick note -->
+    <string name="quick_note_title">Quick note</string>
+    <string name="quick_note_hint">Add a short note to this photo (optional)</string>
+    <string name="save">Save</string>
+    <string name="skip">Skip</string>
+    <string name="cancel">Cancel</string>
+    <string name="delete">Delete</string>
+
+    <!-- Gallery -->
+    <string name="gallery_empty">No captures yet</string>
+    <string name="gallery_empty_body">Photos you take with ProofStamp will appear here with their verification IDs.</string>
+    <string name="filter_all">All</string>
+    <string name="filter_today">Today</string>
+    <string name="filter_week">This week</string>
+    <string name="filter_project">Project</string>
+    <string name="share">Share</string>
+    <string name="export_zip">Export ZIP</string>
+    <string name="selected_count">%1$d selected</string>
+
+    <!-- Detail -->
+    <string name="verification_code">Verification code</string>
+    <string name="sha256">SHA-256</string>
+    <string name="signature">Signature</string>
+    <string name="captured_at">Captured</string>
+    <string name="location">Location</string>
+    <string name="project">Project</string>
+    <string name="operator">Operator</string>
+    <string name="note">Note</string>
+    <string name="session">Session</string>
+    <string name="integrity">Integrity</string>
+    <string name="integrity_ok">Verified — file unchanged</string>
+    <string name="integrity_failed">Modified / Verification Failed</string>
+    <string name="integrity_missing">File missing</string>
+    <string name="check_integrity">Re-check integrity</string>
+    <string name="delete_photo_confirm">Delete this photo and its proof record? This cannot be undone.</string>
+
+    <!-- Verify -->
+    <string name="verify_title">Verify a photo</string>
+    <string name="verify_body">Pick any image. ProofStamp recomputes its SHA-256 fingerprint on-device and compares it to the sealed record created at capture time.</string>
+    <string name="pick_photo">Pick photo</string>
+    <string name="verify_unknown">Not a ProofStamp capture on this device</string>
+    <string name="verify_by_code">Or enter a verification code</string>
+    <string name="verify_code_hint">e.g. 7KQ2-M9XA</string>
+    <string name="lookup">Look up</string>
+
+    <!-- Sessions -->
+    <string name="sessions_empty">No capture sessions</string>
+    <string name="sessions_empty_body">Start a session from the camera to group photos with a shared Session ID and sequence numbers.</string>
+    <string name="session_photos">%1$d photos</string>
+    <string name="export_report">Export ZIP report</string>
+    <string name="active">Active</string>
+    <string name="ended">Ended</string>
+
+    <!-- Presets -->
+    <string name="presets">Project presets</string>
+    <string name="preset_new">New preset</string>
+    <string name="preset_name">Preset name</string>
+    <string name="preset_project">Project / client</string>
+    <string name="preset_operator">Operator name</string>
+    <string name="preset_location">Default location label</string>
+    <string name="preset_note">Default note</string>
+
+    <!-- Settings -->
+    <string name="settings_watermark">Watermark</string>
+    <string name="settings_template">Template</string>
+    <string name="settings_show_qr">Show QR on photo</string>
+    <string name="settings_show_coords">Show coordinates</string>
+    <string name="settings_show_place">Show place name</string>
+    <string name="settings_privacy">Privacy</string>
+    <string name="settings_gps_capture">Record GPS at capture</string>
+    <string name="settings_strip_exif">Strip GPS EXIF when sharing</string>
+    <string name="settings_strip_exif_body">Clean Share removes location metadata from shared copies. The visual stamp and verification ID stay on the image.</string>
+    <string name="settings_identity">Identity</string>
+    <string name="settings_operator">Operator name</string>
+    <string name="settings_project">Default project</string>
+    <string name="settings_about">About</string>
+    <string name="settings_offline">100% offline. Hashing and signing happen on this device. No account, no cloud.</string>
+    <string name="settings_version">Version %1$s</string>
+    <string name="settings_ads">Ads support development and never appear on the camera screen.</string>
+
+    <!-- Misc -->
+</resources>

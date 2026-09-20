@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Shield -->
+    <path
+        android:fillColor="#19C37D"
+        android:pathData="M54,22 L78,31 L78,52 C78,67 67,79 54,86 C41,79 30,67 30,52 L30,31 Z" />
+    <!-- Camera body cutout -->
+    <path
+        android:fillColor="#0B0F14"
+        android:pathData="M40,46 L47,46 L50,41 L58,41 L61,46 L68,46 C70,46 71,47 71,49 L71,66 C71,68 70,69 68,69 L40,69 C38,69 37,68 37,66 L37,49 C37,47 38,46 40,46 Z" />
+    <!-- Lens -->
+    <path
+        android:fillColor="#19C37D"
+        android:pathData="M54,50 C58.4,50 62,53.6 62,58 C62,62.4 58.4,66 54,66 C49.6,66 46,62.4 46,58 C46,53.6 49.6,50 54,50 Z" />
+    <path
+        android:fillColor="#0B0F14"
+        android:pathData="M54,54 C56.2,54 58,55.8 58,58 C58,60.2 56.2,62 54,62 C51.8,62 50,60.2 50,58 C50,55.8 51.8,54 54,54 Z" />
+    <!-- Check mark -->
+    <path
+        android:strokeColor="#0B0F14"
+        android:strokeWidth="3"
+        android:strokeLineCap="round"
+        android:pathData="M64,52 L67,55 L72,49" />
+</vector>
