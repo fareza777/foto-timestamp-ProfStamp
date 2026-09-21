@@ -3,9 +3,13 @@ package com.proofstamp.app.di
 import android.content.Context
 import com.proofstamp.app.capture.CaptureProcessor
 import com.proofstamp.app.capture.OverlayRenderer
+import com.proofstamp.app.capture.VideoProcessor
+import com.proofstamp.app.data.c2pa.C2paManager
+import com.proofstamp.app.data.c2pa.C2paSigner
 import com.proofstamp.app.data.crypto.ProofSigner
 import com.proofstamp.app.data.db.ProofStampDatabase
 import com.proofstamp.app.data.location.LocationProvider
+import com.proofstamp.app.data.sensor.SensorProbe
 import com.proofstamp.app.data.repo.PhotoRepository
 import com.proofstamp.app.data.repo.PresetRepository
 import com.proofstamp.app.data.repo.SessionRepository
@@ -26,10 +30,21 @@ class AppContainer(context: Context) {
     val sessionRepository: SessionRepository by lazy { SessionRepository(database.sessionDao(), database.photoDao()) }
     val presetRepository: PresetRepository by lazy { PresetRepository(database.presetDao()) }
 
+    val c2paSigner: C2paSigner by lazy { C2paSigner(appContext) }
+    val c2pa: C2paManager by lazy { C2paManager(appContext, c2paSigner) }
+
+    val sensorProbe: SensorProbe by lazy { SensorProbe(appContext) }
     val overlayRenderer: OverlayRenderer by lazy { OverlayRenderer(appContext) }
     val captureProcessor: CaptureProcessor by lazy {
-        CaptureProcessor(appContext, overlayRenderer, signer, photoRepository, sessionRepository)
+        CaptureProcessor(appContext, overlayRenderer, signer, photoRepository, sessionRepository, c2pa)
     }
-    val verifier: Verifier by lazy { Verifier(appContext, photoRepository, signer) }
+    val videoProcessor: VideoProcessor by lazy {
+        VideoProcessor(appContext, signer, photoRepository, sessionRepository, c2pa)
+    }
+    val verifier: Verifier by lazy { Verifier(appContext, photoRepository, signer, c2pa) }
     val exportManager: ExportManager by lazy { ExportManager(appContext, photoRepository, sessionRepository, settings) }
+
+    /** Reads a content:// document fully — used for trusted-identity PEM import. */
+    fun contentResolverRead(uri: android.net.Uri): ByteArray? =
+        runCatching { appContext.contentResolver.openInputStream(uri)?.use { it.readBytes() } }.getOrNull()
 }

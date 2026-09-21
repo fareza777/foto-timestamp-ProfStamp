@@ -69,6 +69,22 @@
     <string name="verify_by_code">Or enter a verification code</string>
     <string name="verify_code_hint">e.g. 7KQ2-M9XA</string>
     <string name="lookup">Look up</string>
+    <string name="verify_external">Verified — not captured on this device</string>
+
+    <!-- Content Credentials (C2PA) -->
+    <string name="verified_capture">Verified Capture</string>
+    <string name="c2pa_section">Content Credentials</string>
+    <string name="c2pa_valid">Credential valid — file unchanged since signing</string>
+    <string name="c2pa_modified">Credential embedded, but file modified after signing</string>
+    <string name="c2pa_absent">No Content Credentials embedded</string>
+    <string name="c2pa_error">Could not read embedded credentials</string>
+    <string name="c2pa_signed_by">Signed by</string>
+    <string name="c2pa_title">Title</string>
+    <string name="c2pa_issuer">Issuer</string>
+    <string name="c2pa_signed_at">Signed at</string>
+    <string name="c2pa_failures">Failures</string>
+    <string name="c2pa_third_party">Verifiable in any C2PA-compatible checker (e.g. verify.contentauthenticity.org). Nothing is uploaded.</string>
+    <string name="c2pa_qr_body">Scan to read this capture\'s proof payload — the same QR stamped on the image.</string>
 
     <!-- Sessions -->
     <string name="sessions_empty">No capture sessions</string>
@@ -102,6 +118,7 @@
     <string name="settings_project">Default project</string>
     <string name="settings_about">About</string>
     <string name="settings_offline">100% offline. Hashing and signing happen on this device. No account, no cloud.</string>
+    <string name="settings_c2pa_body">Every camera capture embeds a signed C2PA manifest — capture time, Photo ID, app version, optional GPS — using a key in Android Keystore. Photos picked from the gallery are never marked as original captures.</string>
     <string name="settings_version">Version %1$s</string>
     <string name="settings_ads">Ads support development and never appear on the camera screen.</string>
 

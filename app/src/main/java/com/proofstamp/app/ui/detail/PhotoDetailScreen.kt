@@ -2,6 +2,7 @@ package com.proofstamp.app.ui.detail
 
 import android.app.Activity
 import android.content.Intent
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -45,6 +47,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -56,12 +59,17 @@ import androidx.lifecycle.viewModelScope
 import coil.compose.AsyncImage
 import com.proofstamp.app.R
 import com.proofstamp.app.ads.AdsManager
+import com.proofstamp.app.capture.QrGenerator
+import com.proofstamp.app.data.c2pa.C2paState
 import com.proofstamp.app.data.crypto.Ids
 import com.proofstamp.app.data.db.PhotoEntity
 import com.proofstamp.app.di.AppContainer
+import com.proofstamp.app.share.ProofQr
 import com.proofstamp.app.share.ShareMode
 import com.proofstamp.app.share.VerifyResult
+import com.proofstamp.app.ui.components.CredentialsCard
 import com.proofstamp.app.ui.components.KeyValueRow
+import com.proofstamp.app.ui.components.MediaThumb
 import com.proofstamp.app.ui.components.PsCard
 import com.proofstamp.app.ui.components.SectionLabel
 import com.proofstamp.app.ui.components.StatusPill
@@ -156,15 +164,34 @@ fun PhotoDetailScreen(container: AppContainer, photoId: String, onBack: () -> Un
         }
 
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).navigationBarsPadding()) {
-            AsyncImage(
-                model = File(p.filePath),
-                contentDescription = p.id,
+            MediaThumb(
+                path = p.filePath,
                 contentScale = ContentScale.Fit,
-                modifier = Modifier.fillMaxWidth().aspectRatio(p.width.toFloat() / p.height.coerceAtLeast(1)).clip(RoundedCornerShape(16.dp)).background(PsColors.Surface),
+                modifier = Modifier.fillMaxWidth().aspectRatio((p.width.coerceAtLeast(1)).toFloat() / p.height.coerceAtLeast(1)).clip(RoundedCornerShape(16.dp)).background(PsColors.Surface),
             )
             Spacer(Modifier.height(16.dp))
 
             IntegrityCard(verify, onRecheck = vm::recheck)
+            Spacer(Modifier.height(12.dp))
+
+            SectionLabel(stringResource(R.string.c2pa_section))
+            PsCard {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    val qr = remember(p.id) {
+                        QrGenerator.generate(ProofQr.build(p.id, p.capturedAt, p.verificationCode), 384).asImageBitmap()
+                    }
+                    Image(bitmap = qr, contentDescription = stringResource(R.string.verified_capture), modifier = Modifier.size(96.dp).clip(RoundedCornerShape(8.dp)))
+                    Column(Modifier.weight(1f)) {
+                        if (p.c2pa || verify?.c2pa?.state == C2paState.VALID) {
+                            StatusPill(stringResource(R.string.verified_capture), PsColors.Accent, icon = Icons.Outlined.Verified)
+                            Spacer(Modifier.height(8.dp))
+                        }
+                        Text(stringResource(R.string.c2pa_qr_body), style = MaterialTheme.typography.bodySmall, color = PsColors.TextDim)
+                    }
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            CredentialsCard(verify?.c2pa)
             Spacer(Modifier.height(12.dp))
 
             SectionLabel(stringResource(R.string.verification_code))
@@ -245,6 +272,7 @@ private fun presentation(result: VerifyResult?): IntegrityPresentation = when (r
     )
     is VerifyResult.Modified -> IntegrityPresentation(PsColors.Danger, Icons.Outlined.Warning, stringResource(R.string.integrity_failed), "The file's bytes differ from the fingerprint sealed at capture time.")
     is VerifyResult.Missing -> IntegrityPresentation(PsColors.Warn, Icons.Outlined.Warning, stringResource(R.string.integrity_missing), "The sealed file is no longer on this device.")
+    is VerifyResult.ExternalValid -> IntegrityPresentation(PsColors.Accent, Icons.Outlined.Verified, stringResource(R.string.verify_external), "Its embedded C2PA credentials verify, but this device's ledger holds no record of it.")
     is VerifyResult.Unknown -> IntegrityPresentation(PsColors.Warn, Icons.Outlined.Warning, stringResource(R.string.verify_unknown), "")
 }
 
