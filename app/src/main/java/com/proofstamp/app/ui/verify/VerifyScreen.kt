@@ -52,6 +52,7 @@ import com.proofstamp.app.data.crypto.Ids
 import com.proofstamp.app.data.db.PhotoEntity
 import com.proofstamp.app.di.AppContainer
 import com.proofstamp.app.share.VerifyResult
+import com.proofstamp.app.ui.components.CredentialsCard
 import com.proofstamp.app.ui.components.KeyValueRow
 import com.proofstamp.app.ui.components.PsCard
 import com.proofstamp.app.ui.components.SectionLabel
@@ -139,10 +140,13 @@ fun VerifyScreen(container: AppContainer, onOpenPhoto: (String) -> Unit) {
         state.result?.let { r ->
             Spacer(Modifier.height(16.dp))
             IntegrityCard(r, onRecheck = { state.pickedUri?.let(vm::verify) })
+            Spacer(Modifier.height(8.dp))
+            CredentialsCard(r.c2pa)
             val photo = when (r) {
                 is VerifyResult.Authentic -> r.photo
                 is VerifyResult.Modified -> r.photo
                 is VerifyResult.Missing -> r.photo
+                is VerifyResult.ExternalValid -> null
                 is VerifyResult.Unknown -> null
             }
             if (photo != null) {
@@ -157,6 +161,10 @@ fun VerifyScreen(container: AppContainer, onOpenPhoto: (String) -> Unit) {
                 }
             }
             if (r is VerifyResult.Unknown && r.actualHash.isNotBlank()) {
+                Spacer(Modifier.height(8.dp))
+                PsCard { KeyValueRow(stringResource(R.string.sha256), r.actualHash, mono = true, copyable = true, maxLines = 3) }
+            }
+            if (r is VerifyResult.ExternalValid && r.actualHash.isNotBlank()) {
                 Spacer(Modifier.height(8.dp))
                 PsCard { KeyValueRow(stringResource(R.string.sha256), r.actualHash, mono = true, copyable = true, maxLines = 3) }
             }

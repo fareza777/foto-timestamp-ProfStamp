@@ -14,11 +14,13 @@ val keystoreProps = Properties().apply {
 
 android {
     namespace = "com.proofstamp.app"
-    compileSdk = 35
+    // 36 required by com.github.contentauth:c2pa-android AAR metadata; targetSdk unchanged.
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.proofstamp.app"
-        minSdk = 26
+        // minSdk 28 is required by the official C2PA Android SDK (org.contentauth:c2pa-android).
+        minSdk = 28
         targetSdk = 35
         versionCode = 1
         versionName = "1.0.0"
@@ -80,7 +82,18 @@ android {
     }
 
     packaging {
-        resources.excludes += setOf("/META-INF/{AL2.0,LGPL2.1}")
+        resources.excludes += setOf(
+            "/META-INF/{AL2.0,LGPL2.1}",
+            // Duplicates from BouncyCastle jars (bcprov/bcpkix/bcutil) and jspecify.
+            "META-INF/versions/9/OSGI-INF/MANIFEST.MF",
+            "META-INF/DEPENDENCIES",
+            "META-INF/LICENSE*",
+            "META-INF/NOTICE*",
+            "META-INF/*.SF",
+            "META-INF/*.RSA",
+            "META-INF/*.DSA",
+            "module-info.class",
+        )
     }
 
     testOptions {
@@ -136,7 +149,18 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.coroutines.play.services)
 
+    // C2PA Content Credentials — official c2pa-android SDK (Kotlin wrapper over c2pa-rs).
+    implementation(libs.c2pa.android)
+    // BouncyCastle is needed at runtime to build the Keystore cert conforming to the C2PA
+    // certificate profile (the SDK's own BC deps are implementation-scoped and not re-exported).
+    implementation(libs.bouncycastle.prov)
+    implementation(libs.bouncycastle.pkix)
+
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)
     testImplementation(libs.androidx.test.core)
+
+    androidTestImplementation(libs.junit)
+    androidTestImplementation(libs.androidx.test.junit)
+    androidTestImplementation(libs.androidx.test.runner)
 }

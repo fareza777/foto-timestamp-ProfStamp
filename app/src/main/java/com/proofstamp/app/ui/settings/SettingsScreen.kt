@@ -142,6 +142,8 @@ fun SettingsScreen(container: AppContainer, onOpenPresets: () -> Unit) {
             PsCard {
                 Text(stringResource(R.string.settings_offline), style = MaterialTheme.typography.bodyMedium, color = PsColors.Text)
                 Spacer(Modifier.height(6.dp))
+                Text(stringResource(R.string.settings_c2pa_body), style = MaterialTheme.typography.bodySmall, color = PsColors.TextDim)
+                Spacer(Modifier.height(6.dp))
                 Text(stringResource(R.string.settings_ads), style = MaterialTheme.typography.bodySmall, color = PsColors.TextDim)
                 Spacer(Modifier.height(6.dp))
                 Text(stringResource(R.string.settings_version, BuildConfig.VERSION_NAME), style = MaterialTheme.typography.bodySmall, color = PsColors.TextFaint)

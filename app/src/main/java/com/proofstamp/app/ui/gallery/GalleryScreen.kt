@@ -29,6 +29,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material.icons.outlined.Archive
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Collections
@@ -295,6 +296,13 @@ fun PhotoTile(photo: PhotoEntity, selected: Boolean, selecting: Boolean, modifie
                 null,
                 tint = if (selected) PsColors.Accent else Color.White.copy(alpha = 0.5f),
                 modifier = Modifier.align(Alignment.TopEnd).padding(6.dp).size(20.dp).background(Color.Black.copy(alpha = 0.3f), CircleShape),
+            )
+        } else if (photo.c2pa) {
+            Icon(
+                Icons.Filled.Verified,
+                stringResource(R.string.verified_capture),
+                tint = PsColors.Accent,
+                modifier = Modifier.align(Alignment.TopEnd).padding(6.dp).size(18.dp).background(Color.Black.copy(alpha = 0.45f), CircleShape),
             )
         }
     }

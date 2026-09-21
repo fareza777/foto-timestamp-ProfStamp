@@ -7,6 +7,8 @@ import android.graphics.Matrix
 import android.os.Build
 import androidx.exifinterface.media.ExifInterface
 import com.proofstamp.app.BuildConfig
+import com.proofstamp.app.data.c2pa.C2paCaptureClaim
+import com.proofstamp.app.data.c2pa.C2paManager
 import com.proofstamp.app.data.crypto.Hashing
 import com.proofstamp.app.data.crypto.Ids
 import com.proofstamp.app.data.crypto.ProofManifest
@@ -50,6 +52,7 @@ class CaptureProcessor(
     private val signer: ProofSigner,
     private val photos: PhotoRepository,
     private val sessions: SessionRepository,
+    private val c2pa: C2paManager,
 ) {
     suspend fun process(req: CaptureRequest): PhotoEntity = withContext(Dispatchers.Default) {
         val code = Ids.randomCode()
@@ -85,6 +88,25 @@ class CaptureProcessor(
         stamp.qr?.recycle()
 
         writeExif(file, req, photoId, stamp)
+
+        // Embed the C2PA manifest last: it binds to the final file bytes, so it must
+        // run after the EXIF rewrite. The credential travels with the file itself and
+        // validates in any C2PA verifier — not just this app.
+        val c2paSealed = c2pa.signFile(
+            file,
+            C2paCaptureClaim(
+                photoId = photoId,
+                verificationCode = Ids.formatCode(code),
+                capturedAt = req.capturedAt,
+                timeZoneId = TimeZone.getDefault().id,
+                fix = req.fix?.takeIf { req.settings.gpsEnabled },
+                placeName = req.placeName,
+                project = req.project,
+                operator = req.operator,
+                sessionId = req.session?.id,
+                sequence = sequence,
+            ),
+        )
 
         val contentHash = Hashing.sha256(file)
         val manifest = ProofManifest(
@@ -126,6 +148,7 @@ class CaptureProcessor(
             publicKey = signer.publicKeyBase64(),
             deviceModel = "${Build.MANUFACTURER} ${Build.MODEL}".trim(),
             appVersion = BuildConfig.VERSION_NAME,
+            c2pa = c2paSealed,
         )
         photos.insert(entity)
         entity

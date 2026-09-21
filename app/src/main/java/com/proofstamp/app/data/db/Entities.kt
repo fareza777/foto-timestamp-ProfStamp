@@ -1,5 +1,6 @@
 package com.proofstamp.app.data.db
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
@@ -47,6 +48,9 @@ data class PhotoEntity(
     val publicKey: String,
     val deviceModel: String,
     val appVersion: String,
+    /** True when a signed C2PA manifest (Content Credentials) is embedded in the JPEG. */
+    @ColumnInfo(defaultValue = "0")
+    val c2pa: Boolean = false,
 )
 
 @Entity(tableName = "sessions", indices = [Index("startedAt")])
