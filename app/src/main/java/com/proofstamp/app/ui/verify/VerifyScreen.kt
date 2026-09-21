@@ -2,7 +2,6 @@ package com.proofstamp.app.ui.verify
 
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -101,7 +100,10 @@ class VerifyViewModel(private val container: AppContainer) : ViewModel() {
 fun VerifyScreen(container: AppContainer, onOpenPhoto: (String) -> Unit) {
     val vm = containerViewModel { VerifyViewModel(container) }
     val state by vm.state.collectAsStateWithLifecycle()
-    val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+    // OpenDocument (SAF) over PickVisualMedia: picker URIs always serve GPS-EXIF-redacted
+    // bytes, which would break hash/manifest verification; document URIs honour
+    // ACCESS_MEDIA_LOCATION and return the true bytes.
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) vm.verify(uri)
     }
 
@@ -113,7 +115,7 @@ fun VerifyScreen(container: AppContainer, onOpenPhoto: (String) -> Unit) {
         Spacer(Modifier.height(16.dp))
 
         Button(
-            onClick = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+            onClick = { picker.launch(arrayOf("image/*")) },
             modifier = Modifier.fillMaxWidth().height(52.dp),
             colors = ButtonDefaults.buttonColors(containerColor = PsColors.Accent, contentColor = PsColors.OnAccent),
         ) {

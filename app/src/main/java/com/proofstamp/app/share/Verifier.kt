@@ -2,6 +2,8 @@ package com.proofstamp.app.share
 
 import android.content.Context
 import android.net.Uri
+import android.os.Build
+import android.provider.MediaStore
 import androidx.exifinterface.media.ExifInterface
 import com.proofstamp.app.data.c2pa.C2paManager
 import com.proofstamp.app.data.c2pa.C2paReport
@@ -75,9 +77,15 @@ class Verifier(
      */
     suspend fun verifyUri(uri: Uri): VerifyResult = withContext(Dispatchers.IO) {
         val resolver = context.contentResolver
-        val creds = c2pa.read(uri)
+        // MediaProvider redacts GPS EXIF unless ACCESS_MEDIA_LOCATION is held and the
+        // stream is opened via MediaStore.setRequireOriginal — but that rewrite breaks
+        // one-shot photo-picker grants (SecurityException), so it is applied only to
+        // classic content://media/external|internal URIs. Picker URIs honour the
+        // permission directly.
+        val source = requireOriginal(uri)
+        val creds = runCatching { c2pa.read(source) }.getOrElse { c2pa.read(uri) }
 
-        val actual = resolver.openInputStream(uri)?.use { Hashing.sha256(it) }
+        val actual = openSha256(resolver, source) ?: openSha256(resolver, uri)
             ?: return@withContext VerifyResult.Unknown("", creds)
 
         photos.getByContentHash(actual)?.let {
@@ -91,7 +99,7 @@ class Verifier(
         }
         if (creds.state == C2paState.MODIFIED) {
             // Tampered credentials: still try to attribute it to a local record.
-            val known = findLocalRecord(resolver, uri)
+            val known = findLocalRecord(resolver, source)
             return@withContext if (known != null) {
                 VerifyResult.Modified(known, actual, creds)
             } else {
@@ -100,8 +108,20 @@ class Verifier(
         }
 
         // Bytes changed (or it's a clean-share copy). Try to find which record it came from.
-        val known = findLocalRecord(resolver, uri)
+        val known = findLocalRecord(resolver, source)
         if (known != null) VerifyResult.Modified(known, actual, creds) else VerifyResult.Unknown(actual, creds)
+    }
+
+    private fun openSha256(resolver: android.content.ContentResolver, uri: Uri): String? =
+        runCatching { resolver.openInputStream(uri)?.use { Hashing.sha256(it) } }.getOrNull()
+
+    private fun requireOriginal(uri: Uri): Uri {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return uri
+        if (uri.authority != MediaStore.AUTHORITY) return uri
+        // content://media/picker/... URIs carry a one-shot grant that does not cover
+        // the requireOriginal-parameterized variant — use them as-is.
+        if (uri.path.orEmpty().startsWith("/picker")) return uri
+        return runCatching { MediaStore.setRequireOriginal(uri) }.getOrDefault(uri)
     }
 
     private suspend fun findLocalRecord(resolver: android.content.ContentResolver, uri: Uri): PhotoEntity? {

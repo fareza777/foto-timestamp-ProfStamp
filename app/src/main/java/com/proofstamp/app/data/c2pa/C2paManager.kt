@@ -284,7 +284,8 @@ class C2paManager(
         val assertions = active?.optJSONArray("assertions") ?: return null
         for (i in 0 until assertions.length()) {
             val a = assertions.optJSONObject(i) ?: continue
-            if (a.optString("label") == "c2pa.actions") {
+            // The SDK stores actions under "c2pa.actions" (v1) or "c2pa.actions.v2".
+            if (a.optString("label").startsWith("c2pa.actions")) {
                 val actions = a.optJSONObject("data")?.optJSONArray("actions") ?: continue
                 for (j in 0 until actions.length()) {
                     actions.optJSONObject(j)?.optString("when")?.takeIf { it.isNotBlank() }?.let { return it }
