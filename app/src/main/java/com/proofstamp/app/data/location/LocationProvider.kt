@@ -29,6 +29,8 @@ data class GeoFix(
     val altitudeM: Double?,
     val timestamp: Long,
     val placeName: String? = null,
+    /** True when the provider self-reports a mocked location (API 31+ `isMock`, else `isFromMockProvider`). */
+    val isMock: Boolean? = null,
 )
 
 class LocationProvider(private val context: Context) {
@@ -58,6 +60,8 @@ class LocationProvider(private val context: Context) {
                             accuracyM = if (loc.hasAccuracy()) loc.accuracy else null,
                             altitudeM = if (loc.hasAltitude()) loc.altitude else null,
                             timestamp = loc.time,
+                            isMock = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) loc.isMock
+                            else @Suppress("DEPRECATION") loc.isFromMockProvider,
                         ),
                     )
                 }

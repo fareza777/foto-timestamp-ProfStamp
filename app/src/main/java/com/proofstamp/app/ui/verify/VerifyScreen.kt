@@ -20,6 +20,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AddPhotoAlternate
+import androidx.compose.material.icons.outlined.QrCodeScanner
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -33,6 +34,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -94,6 +96,21 @@ class VerifyViewModel(private val container: AppContainer) : ViewModel() {
         val found = container.verifier.lookupCode(code)
         _state.update { it.copy(codeResult = found, codeSearched = true) }
     }
+
+    /** QR stamped on a capture was scanned — resolve the record and re-verify the file. */
+    fun verifyQr(raw: String) = viewModelScope.launch {
+        val id = com.proofstamp.app.share.ProofQr.parsePhotoId(raw)
+        val code = com.proofstamp.app.share.ProofQr.parseCode(raw)
+        val photo = id?.let { container.photoRepository.getById(it) }
+            ?: code?.let { container.verifier.lookupCode(it) }
+        if (photo == null) {
+            _state.update { it.copy(codeSearched = true, codeResult = null, code = code ?: "") }
+            return@launch
+        }
+        _state.update { it.copy(busy = true, result = null, pickedUri = Uri.fromFile(java.io.File(photo.filePath))) }
+        val r = container.verifier.verifyStored(photo)
+        _state.update { it.copy(result = r, busy = false) }
+    }
 }
 
 @Composable
@@ -114,14 +131,29 @@ fun VerifyScreen(container: AppContainer, onOpenPhoto: (String) -> Unit) {
         Text(stringResource(R.string.verify_body), style = MaterialTheme.typography.bodyMedium, color = PsColors.TextDim)
         Spacer(Modifier.height(16.dp))
 
+        var showQrScan by remember { androidx.compose.runtime.mutableStateOf(false) }
         Button(
-            onClick = { picker.launch(arrayOf("image/*")) },
+            onClick = { picker.launch(arrayOf("image/*", "video/*")) },
             modifier = Modifier.fillMaxWidth().height(52.dp),
             colors = ButtonDefaults.buttonColors(containerColor = PsColors.Accent, contentColor = PsColors.OnAccent),
         ) {
             Icon(Icons.Outlined.AddPhotoAlternate, null)
             Spacer(Modifier.padding(4.dp))
             Text(stringResource(R.string.pick_photo))
+        }
+        Spacer(Modifier.height(8.dp))
+        OutlinedButton(onClick = { showQrScan = true }, modifier = Modifier.fillMaxWidth().height(48.dp)) {
+            Icon(Icons.Outlined.QrCodeScanner, null)
+            Spacer(Modifier.padding(4.dp))
+            Text("Scan capture QR")
+        }
+        if (showQrScan) {
+            com.proofstamp.app.ui.components.ScanSheet(
+                title = "Scan the QR on a ProfStamp photo",
+                mode = com.proofstamp.app.ui.components.ScanMode.BARCODE,
+                onDetected = { vm.verifyQr(it); showQrScan = false },
+                onDismiss = { showQrScan = false },
+            )
         }
 
         if (state.busy) {
@@ -169,6 +201,16 @@ fun VerifyScreen(container: AppContainer, onOpenPhoto: (String) -> Unit) {
             if (r is VerifyResult.ExternalValid && r.actualHash.isNotBlank()) {
                 Spacer(Modifier.height(8.dp))
                 PsCard { KeyValueRow(stringResource(R.string.sha256), r.actualHash, mono = true, copyable = true, maxLines = 3) }
+            }
+            val forensic = (r as? VerifyResult.Unknown)?.forensicMark ?: (r as? VerifyResult.ExternalValid)?.forensicMark
+            if (forensic == true) {
+                Spacer(Modifier.height(8.dp))
+                PsCard(accent = PsColors.Accent) {
+                    Text("ProfStamp forensic mark detected in the pixels", color = PsColors.Text, style = MaterialTheme.typography.bodyMedium)
+                    (r as? VerifyResult.Unknown)?.embeddedId?.let {
+                        KeyValueRow("Embedded ID", it, mono = true)
+                    }
+                }
             }
         }
 

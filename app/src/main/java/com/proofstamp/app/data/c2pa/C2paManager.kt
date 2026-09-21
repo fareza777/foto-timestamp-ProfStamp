@@ -30,6 +30,16 @@ data class C2paCaptureClaim(
     val operator: String,
     val sessionId: String?,
     val sequence: Int?,
+    /** Free-form note / voice-note transcript. */
+    val note: String = "",
+    /** Asset/barcode scanned in-app at capture time. */
+    val assetCode: String = "",
+    /** Physical-sensor snapshot JSON (see SensorProbe), or null. */
+    val sensors: JSONObject? = null,
+    /** Look/filter name applied to the output. */
+    val look: String = "NATURAL",
+    /** MIME type of the asset — "image/jpeg" or "video/mp4". */
+    val mimeType: String = "image/jpeg",
 )
 
 /** What a C2PA verifier can say about a file. */
@@ -75,7 +85,7 @@ class C2paManager(
                 Builder.fromJson(buildManifestJson(claim)).use { builder ->
                     FileStream(file, FileStream.Mode.READ).use { src ->
                         FileStream(tmp, FileStream.Mode.WRITE).use { dst ->
-                            builder.sign("image/jpeg", src, dst, c2paSigner)
+                            builder.sign(claim.mimeType, src, dst, c2paSigner)
                         }
                     }
                 }
@@ -159,6 +169,10 @@ class C2paManager(
             if (claim.operator.isNotBlank()) put("operator", claim.operator)
             claim.sessionId?.let { put("session_id", it) }
             claim.sequence?.let { put("sequence", it) }
+            if (claim.note.isNotBlank()) put("note", claim.note)
+            if (claim.assetCode.isNotBlank()) put("asset_code", claim.assetCode)
+            if (claim.look != "NATURAL") put("look", claim.look)
+            claim.sensors?.let { put("sensors", it) }
             claim.placeName?.takeIf { it.isNotBlank() }?.let { put("place_name", it) }
             claim.fix?.let { f ->
                 put("latitude", f.latitude)
@@ -197,7 +211,7 @@ class C2paManager(
                 ),
             )
             put("title", claim.photoId)
-            put("format", "image/jpeg")
+            put("format", claim.mimeType)
             put("instance_id", "xmp:iid:${claim.photoId}")
             put("assertions", assertions)
         }.toString()

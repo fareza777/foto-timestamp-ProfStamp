@@ -48,9 +48,15 @@ data class PhotoEntity(
     val publicKey: String,
     val deviceModel: String,
     val appVersion: String,
-    /** True when a signed C2PA manifest (Content Credentials) is embedded in the JPEG. */
+    /** True when a signed C2PA manifest (Content Credentials) is embedded in the file. */
     @ColumnInfo(defaultValue = "0")
     val c2pa: Boolean = false,
+    /** "PHOTO" (JPEG) or "VIDEO" (MP4); both carry the C2PA manifest. */
+    @ColumnInfo(defaultValue = "PHOTO")
+    val mediaType: String = "PHOTO",
+    /** Optional asset/barcode scanned in-app at capture time (embedded in the manifest). */
+    @ColumnInfo(defaultValue = "")
+    val assetCode: String = "",
 )
 
 @Entity(tableName = "sessions", indices = [Index("startedAt")])

@@ -56,12 +56,74 @@ class C2paSigner(private val context: Context) {
         false
     }
 
-    /** A C2PA signer whose private-key operations run inside Android Keystore. */
-    fun newSigner(): Signer = Signer.withCallback(
-        algorithm = SigningAlgorithm.ES256,
-        certificateChainPEM = certificatePem(),
-        tsaURL = null,
-    ) { data -> sign(data) }
+    /**
+     * A C2PA signer. When a provisioned cert chain + key (e.g. CAWG/C2PA trust-list
+     * issued, imported via Settings) is present it is used directly; otherwise private-key
+     * operations run inside Android Keystore with our conformant self-signed cert.
+     */
+    fun newSigner(): Signer =
+        if (hasTrustedIdentity()) {
+            Signer.fromKeys(
+                certsPEM = trustedChainPem(),
+                privateKeyPEM = trustedKeyPem(),
+                algorithm = SigningAlgorithm.ES256,
+                tsaURL = null,
+            )
+        } else {
+            Signer.withCallback(
+                algorithm = SigningAlgorithm.ES256,
+                certificateChainPEM = certificatePem(),
+                tsaURL = null,
+            ) { data -> sign(data) }
+        }
+
+    // --- Trusted identity (provisioned chain + key imported via Settings) ---
+
+    private val identityDir: File get() = File(context.filesDir, "c2pa_identity")
+    private val chainFile get() = File(identityDir, "chain.pem")
+    private val keyFile get() = File(identityDir, "key.pem")
+
+    /** True when a provisioned (e.g. CAWG-issued) cert chain + private key is imported. */
+    fun hasTrustedIdentity(): Boolean = chainFile.isFile && keyFile.isFile
+
+    /** Human-readable subject of the active identity, for display in settings. */
+    fun identitySubject(): String =
+        if (hasTrustedIdentity()) {
+            runCatching {
+                val cert = java.security.cert.CertificateFactory.getInstance("X.509")
+                    .generateCertificate(chainFile.inputStream()) as X509Certificate
+                cert.subjectX500Principal.name
+            }.getOrElse { "Trusted identity (imported)" }
+        } else {
+            "${certificateSubject()} (self-signed)"
+        }
+
+    /** Imports a PEM cert chain + PEM EC private key (PKCS8). Returns error text or null on success. */
+    fun importTrustedIdentity(chainPem: ByteArray, keyPem: ByteArray): String? = try {
+        java.security.cert.CertificateFactory.getInstance("X.509")
+            .generateCertificate(chainPem.inputStream())
+        java.security.KeyFactory.getInstance("EC")
+            .generatePrivate(java.security.spec.PKCS8EncodedKeySpec(decodePem(keyPem)))
+        identityDir.mkdirs()
+        chainFile.writeBytes(chainPem)
+        keyFile.writeBytes(keyPem)
+        null
+    } catch (e: Exception) {
+        "Invalid PEM files: ${e.message}"
+    }
+
+    fun clearTrustedIdentity() {
+        chainFile.delete()
+        keyFile.delete()
+    }
+
+    private fun trustedChainPem(): String = chainFile.readText()
+    private fun trustedKeyPem(): String = keyFile.readText()
+
+    private fun decodePem(pem: ByteArray): ByteArray =
+        java.util.Base64.getMimeDecoder().decode(
+            String(pem).replace(Regex("-----[A-Z ]+-----"), "").trim(),
+        )
 
     /** PEM-encoded signing certificate, generating a conformant self-signed cert on first use. */
     fun certificatePem(): String {

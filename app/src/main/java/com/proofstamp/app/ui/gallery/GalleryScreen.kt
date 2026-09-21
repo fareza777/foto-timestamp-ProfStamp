@@ -72,6 +72,7 @@ import com.proofstamp.app.data.db.PhotoEntity
 import com.proofstamp.app.di.AppContainer
 import com.proofstamp.app.share.ShareMode
 import com.proofstamp.app.ui.components.EmptyState
+import com.proofstamp.app.ui.components.MediaThumb
 import com.proofstamp.app.ui.nav.containerViewModel
 import com.proofstamp.app.ui.theme.Mono
 import com.proofstamp.app.ui.theme.PsColors
@@ -265,12 +266,7 @@ fun PhotoTile(photo: PhotoEntity, selected: Boolean, selecting: Boolean, modifie
             .background(PsColors.Surface)
             .then(if (selected) Modifier.border(2.dp, PsColors.Accent, RoundedCornerShape(12.dp)) else Modifier),
     ) {
-        AsyncImage(
-            model = File(photo.filePath),
-            contentDescription = photo.id,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxSize(),
-        )
+        MediaThumb(path = photo.filePath, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
         Box(
             Modifier.align(Alignment.BottomStart).fillMaxWidth()
                 .background(Color.Black.copy(alpha = 0.55f))

@@ -18,6 +18,7 @@ import com.proofstamp.app.data.db.SessionEntity
 import com.proofstamp.app.data.location.GeoFix
 import com.proofstamp.app.data.repo.PhotoRepository
 import com.proofstamp.app.data.repo.SessionRepository
+import com.proofstamp.app.data.sensor.SensorProbe
 import com.proofstamp.app.data.settings.AppSettings
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -40,6 +41,10 @@ class CaptureRequest(
     val note: String,
     val session: SessionEntity?,
     val mirrored: Boolean,
+    /** Asset/barcode scanned in-app before capture (embedded in the manifest). */
+    val assetCode: String = "",
+    /** Physical-sensor snapshot taken at shutter press, when enabled. */
+    val sensors: SensorProbe.Snapshot? = null,
 )
 
 /**
@@ -73,13 +78,22 @@ class CaptureProcessor(
             sequence = sequence,
             photoId = photoId,
             verificationCode = Ids.formatCode(code),
-            qr = if (req.settings.showQr) QrGenerator.generate("proofstamp:$photoId:${req.capturedAt}") else null,
+            qr = if (req.settings.showQr) {
+                QrGenerator.generate(com.proofstamp.app.share.ProofQr.build(photoId, req.capturedAt, code))
+            } else null,
             template = req.settings.template,
             showCoordinates = req.settings.showCoordinates,
             showPlaceName = req.settings.showPlaceName,
         )
         val stamped = renderer.render(oriented, stamp)
         if (stamped !== oriented) oriented.recycle()
+
+        // Output look (color treatment) is applied before the signature so the
+        // credential binds to the pixels people actually receive.
+        applyLook(stamped, req.settings.look)
+        // Invisible forensic watermark keyed to the photo ID — survives screenshot
+        // and re-encode even if the C2PA manifest is later stripped.
+        if (req.settings.forensicMark) WatermarkCodec.embed(stamped, photoId)
 
         val file = File(photos.capturesDir, "$photoId.jpg")
         FileOutputStream(file).use { stamped.compress(Bitmap.CompressFormat.JPEG, 92, it) }
@@ -105,6 +119,10 @@ class CaptureProcessor(
                 operator = req.operator,
                 sessionId = req.session?.id,
                 sequence = sequence,
+                note = req.note,
+                assetCode = req.assetCode,
+                sensors = if (req.settings.sensorProof) req.sensors?.toJson() else null,
+                look = req.settings.look.name,
             ),
         )
 
@@ -149,9 +167,33 @@ class CaptureProcessor(
             deviceModel = "${Build.MANUFACTURER} ${Build.MODEL}".trim(),
             appVersion = BuildConfig.VERSION_NAME,
             c2pa = c2paSealed,
+            mediaType = "PHOTO",
+            assetCode = req.assetCode,
         )
         photos.insert(entity)
         entity
+    }
+
+    private fun applyLook(bitmap: Bitmap, look: com.proofstamp.app.data.settings.PhotoLook) {
+        val matrix = when (look) {
+            com.proofstamp.app.data.settings.PhotoLook.NATURAL -> return
+            com.proofstamp.app.data.settings.PhotoLook.MONO -> android.graphics.ColorMatrix().apply {
+                setSaturation(0f)
+            }
+            com.proofstamp.app.data.settings.PhotoLook.DOCUMENT -> android.graphics.ColorMatrix(floatArrayOf(
+                1.35f, 0f, 0f, 0f, -30f,
+                0f, 1.35f, 0f, 0f, -30f,
+                0f, 0f, 1.35f, 0f, -30f,
+                0f, 0f, 0f, 1f, 0f,
+            ))
+            com.proofstamp.app.data.settings.PhotoLook.VIVID -> android.graphics.ColorMatrix().apply {
+                setSaturation(1.45f)
+            }
+        }
+        val paint = android.graphics.Paint().apply {
+            colorFilter = android.graphics.ColorMatrixColorFilter(matrix)
+        }
+        android.graphics.Canvas(bitmap).drawBitmap(bitmap, 0f, 0f, paint)
     }
 
     private fun decodeOriented(bytes: ByteArray, mirrored: Boolean): Bitmap {

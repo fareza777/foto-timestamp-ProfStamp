@@ -45,12 +45,18 @@ sealed interface VerifyResult {
     data class ExternalValid(
         override val c2pa: C2paReport,
         val actualHash: String,
+        /** True when the invisible ProfStamp watermark was detected in the pixels. */
+        val forensicMark: Boolean? = null,
     ) : VerifyResult
 
     /** Nothing in the local ledger matches this file. */
     data class Unknown(
         val actualHash: String,
         override val c2pa: C2paReport? = null,
+        /** True when the invisible ProfStamp watermark was detected — the manifest was stripped. */
+        val forensicMark: Boolean? = null,
+        /** Photo ID recovered from EXIF/watermark when known. */
+        val embeddedId: String? = null,
     ) : VerifyResult
 }
 
@@ -100,17 +106,47 @@ class Verifier(
         if (creds.state == C2paState.MODIFIED) {
             // Tampered credentials: still try to attribute it to a local record.
             val known = findLocalRecord(resolver, source)
-            return@withContext if (known != null) {
-                VerifyResult.Modified(known, actual, creds)
-            } else {
-                VerifyResult.Unknown(actual, creds)
-            }
+            if (known != null) return@withContext VerifyResult.Modified(known, actual, creds)
+            val embeddedId = extractEmbeddedId(resolver, source)
+            val mark = embeddedId?.let { detectMark(source, it) }
+            return@withContext VerifyResult.Unknown(actual, creds, forensicMark = mark, embeddedId = embeddedId)
         }
 
         // Bytes changed (or it's a clean-share copy). Try to find which record it came from.
         val known = findLocalRecord(resolver, source)
-        if (known != null) VerifyResult.Modified(known, actual, creds) else VerifyResult.Unknown(actual, creds)
+        if (known != null) return@withContext VerifyResult.Modified(known, actual, creds)
+
+        // Last resort: the invisible forensic watermark. If the file still carries a
+        // recoverable photo ID (EXIF) we can check the mark — a stripped-manifest copy
+        // of a ProfStamp original still identifies itself as derived from one.
+        val embeddedId = extractEmbeddedId(resolver, source)
+        val mark = embeddedId?.let { detectMark(source, it) }
+        VerifyResult.Unknown(actual, creds, forensicMark = mark, embeddedId = embeddedId)
     }
+
+    /** Extracts the photo ID left in EXIF by the capture pipeline (may be null). */
+    private fun extractEmbeddedId(resolver: android.content.ContentResolver, uri: Uri): String? =
+        resolver.openInputStream(uri)?.use { input ->
+            runCatching {
+                val exif = ExifInterface(input)
+                exif.getAttribute(ExifInterface.TAG_IMAGE_UNIQUE_ID)
+                    ?: exif.getAttribute(ExifInterface.TAG_USER_COMMENT)
+                        ?.substringAfter("id=", "")
+                        ?.substringBefore(';')
+                        ?.takeIf { it.isNotBlank() }
+            }.getOrNull()
+        }
+
+    /** Correlates the picked image's pixels against the watermark pattern for [photoId]. */
+    private suspend fun detectMark(uri: Uri, photoId: String): Boolean? =
+        runCatching {
+            val bmp = context.contentResolver.openInputStream(uri)?.use {
+                android.graphics.BitmapFactory.decodeStream(it)
+            } ?: return null
+            val score = com.proofstamp.app.capture.WatermarkCodec.detect(bmp, photoId)
+            bmp.recycle()
+            score >= com.proofstamp.app.capture.WatermarkCodec.DETECT_THRESHOLD
+        }.getOrNull()
 
     private fun openSha256(resolver: android.content.ContentResolver, uri: Uri): String? =
         runCatching { resolver.openInputStream(uri)?.use { Hashing.sha256(it) } }.getOrNull()

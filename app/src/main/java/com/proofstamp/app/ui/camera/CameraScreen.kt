@@ -8,11 +8,18 @@ import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.CameraSelector
+import androidx.camera.core.FocusMeteringAction
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.Preview
 import androidx.camera.core.resolutionselector.AspectRatioStrategy
 import androidx.camera.core.resolutionselector.ResolutionSelector
+import androidx.camera.extensions.ExtensionMode
+import androidx.camera.extensions.ExtensionsManager
 import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.video.Quality
+import androidx.camera.video.QualitySelector
+import androidx.camera.video.Recorder
+import androidx.camera.video.VideoCapture
 import androidx.camera.view.PreviewView
 import androidx.concurrent.futures.await
 import androidx.compose.animation.core.animateFloatAsState
@@ -40,6 +47,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Circle
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.material.icons.outlined.Cameraswitch
 import androidx.compose.material.icons.outlined.Collections
 import androidx.compose.material.icons.outlined.FlashAuto
@@ -49,16 +57,24 @@ import androidx.compose.material.icons.outlined.LocationOff
 import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material.icons.outlined.PlayArrow
+import androidx.compose.material.icons.outlined.QrCodeScanner
+import androidx.compose.material.icons.outlined.Slideshow
 import androidx.compose.material.icons.outlined.Stop
 import androidx.compose.material.icons.outlined.Tune
+import androidx.compose.material.icons.outlined.Videocam
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Snackbar
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -75,6 +91,9 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -87,7 +106,13 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.proofstamp.app.R
+import com.proofstamp.app.data.settings.CameraMode
+import com.proofstamp.app.data.settings.PhotoLook
 import com.proofstamp.app.di.AppContainer
+import com.proofstamp.app.ui.components.MediaThumb
+import com.proofstamp.app.ui.components.ScanMode
+import com.proofstamp.app.ui.components.ScanSheet
+import com.proofstamp.app.ui.components.VoiceNoteButton
 import com.proofstamp.app.ui.nav.containerViewModel
 import com.proofstamp.app.ui.theme.PsColors
 import java.io.File
@@ -164,6 +189,12 @@ private fun CameraContent(
     }
     LaunchedEffect(state.flashMode) { imageCapture.flashMode = state.flashMode }
 
+    val videoCapture = remember {
+        VideoCapture.withOutput(
+            Recorder.Builder().setQualitySelector(QualitySelector.from(Quality.FHD)).build(),
+        )
+    }
+
     val previewView = remember {
         PreviewView(context).apply {
             scaleType = PreviewView.ScaleType.FILL_CENTER
@@ -171,21 +202,47 @@ private fun CameraContent(
         }
     }
 
-    LaunchedEffect(state.lensFacing) {
+    var showSessionDialog by remember { mutableStateOf(false) }
+    var showPro by remember { mutableStateOf(false) }
+    var scanRequest by remember { mutableStateOf<ScanMode?>(null) }
+    var zoomRatio by remember { mutableStateOf(1f) }
+    var evStops by remember { mutableStateOf(0f) }
+
+    // Rebind when lens, extension mode, capture mode or scanner visibility change.
+    // While the ScanSheet is open it owns the camera — skip rebinding here.
+    LaunchedEffect(state.lensFacing, state.settings.cameraMode, state.videoMode, scanRequest == null) {
+        if (scanRequest != null) return@LaunchedEffect
         val provider = ProcessCameraProvider.getInstance(context).await()
+        val baseSelector = CameraSelector.Builder().requireLensFacing(state.lensFacing).build()
+
+        // CameraX vendor extensions (Night/HDR/Bokeh/FaceRetouch) where the device supports them.
+        val selector = runCatching {
+            val ext = ExtensionsManager.getInstanceAsync(context, provider).await()
+            val supported = CameraMode.entries.filter { mode ->
+                mode == CameraMode.AUTO || ext.isExtensionAvailable(baseSelector, mode.toExtensionMode())
+            }
+            vm.setSupportedModes(supported)
+            val wanted = state.settings.cameraMode
+            if (wanted != CameraMode.AUTO && wanted in supported) {
+                ext.getExtensionEnabledCameraSelector(baseSelector, wanted.toExtensionMode())
+            } else baseSelector
+        }.getOrDefault(baseSelector)
+
         val preview = Preview.Builder()
             .setResolutionSelector(
                 ResolutionSelector.Builder().setAspectRatioStrategy(AspectRatioStrategy.RATIO_4_3_FALLBACK_AUTO_STRATEGY).build(),
             )
             .build()
             .also { it.surfaceProvider = previewView.surfaceProvider }
-        val selector = CameraSelector.Builder().requireLensFacing(state.lensFacing).build()
         provider.unbindAll()
-        runCatching { provider.bindToLifecycle(lifecycleOwner, selector, preview, imageCapture) }
+        vm.camera = runCatching {
+            if (state.videoMode) {
+                provider.bindToLifecycle(lifecycleOwner, selector, preview, videoCapture)
+            } else {
+                provider.bindToLifecycle(lifecycleOwner, selector, preview, imageCapture, videoCapture)
+            }
+        }.getOrNull()
     }
-
-    var showSessionDialog by remember { mutableStateOf(false) }
-    var showPresetPicker by remember { mutableStateOf(false) }
 
     Column(Modifier.fillMaxSize()) {
         // ---- top bar
@@ -221,7 +278,18 @@ private fun CameraContent(
                 .fillMaxWidth()
                 .aspectRatio(3f / 4f)
                 .clip(RoundedCornerShape(20.dp))
-                .background(Color(0xFF05070A)),
+                .background(Color(0xFF05070A))
+                .pointerInput(Unit) {
+                    detectTapGestures { offset ->
+                        // Tap-to-focus: meter+focus at the tapped point.
+                        val point = previewView.meteringPointFactory.createPoint(offset.x, offset.y)
+                        vm.camera?.cameraControl?.startFocusAndMetering(
+                            FocusMeteringAction.Builder(point, FocusMeteringAction.FLAG_AF or FocusMeteringAction.FLAG_AE)
+                                .setAutoCancelDuration(3, java.util.concurrent.TimeUnit.SECONDS)
+                                .build(),
+                        )
+                    }
+                },
         ) {
             AndroidView(factory = { previewView }, modifier = Modifier.fillMaxSize())
             val stamp = vm.previewStamp()
@@ -239,6 +307,48 @@ private fun CameraContent(
                 }
             }
             GpsStatus(state, Modifier.align(Alignment.TopStart).padding(12.dp))
+            // Recording indicator + elapsed time.
+            if (state.recording) {
+                val elapsed = ((state.now - state.recordingStartedAt) / 1000L).coerceAtLeast(0)
+                Row(
+                    Modifier.align(Alignment.TopEnd).padding(12.dp)
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(Color(0xFFB3261E))
+                        .padding(horizontal = 10.dp, vertical = 5.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Icon(Icons.Filled.Circle, null, tint = Color.White, modifier = Modifier.size(8.dp))
+                    Text("REC %d:%02d".format(elapsed / 60, elapsed % 60), style = MaterialTheme.typography.labelSmall, color = Color.White)
+                }
+            }
+        }
+
+        // ---- mode row: Photo / Video + asset chip + pro controls
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            ModePill(label = "Photo", selected = !state.videoMode, icon = Icons.Outlined.PhotoCamera) { vm.setVideoMode(false) }
+            ModePill(label = "Video", selected = state.videoMode, icon = Icons.Outlined.Videocam) { vm.setVideoMode(true) }
+            if (state.assetCode.isNotBlank()) {
+                Text(
+                    "Asset: ${state.assetCode}",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = PsColors.Accent,
+                    maxLines = 1,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(PsColors.Accent.copy(alpha = 0.12f))
+                        .clickable { vm.setAssetCode("") }
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                )
+            }
+            Spacer(Modifier.weight(1f))
+            GlassIconButton(icon = Icons.Outlined.QrCodeScanner, contentDescription = "Scan asset code", onClick = { scanRequest = ScanMode.BARCODE }, size = 40.dp)
+            Spacer(Modifier.width(8.dp))
+            GlassIconButton(icon = Icons.Outlined.Slideshow, contentDescription = "Camera options", onClick = { showPro = true }, size = 40.dp)
         }
 
         // ---- presets strip
@@ -262,7 +372,13 @@ private fun CameraContent(
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Thumbnail(state.lastPhoto?.filePath, onClick = { state.lastPhoto?.let { onOpenPhoto(it.id) } ?: onOpenGallery() })
-            ShutterButton(enabled = !state.processing) { vm.capture(imageCapture, executor) }
+            if (state.videoMode) {
+                RecordButton(recording = state.recording) {
+                    vm.toggleRecording(videoCapture, context, executor)
+                }
+            } else {
+                ShutterButton(enabled = !state.processing) { vm.capture(imageCapture, executor) }
+            }
             GlassIconButton(
                 icon = Icons.Outlined.Cameraswitch,
                 contentDescription = stringResource(R.string.flip_camera),
@@ -272,9 +388,36 @@ private fun CameraContent(
         }
     }
 
-    // ---- dialogs
+    // ---- dialogs + sheets
     if (showSessionDialog) {
         SessionDialog(onDismiss = { showSessionDialog = false }, onStart = { vm.startSession(it); showSessionDialog = false })
+    }
+    scanRequest?.let { mode ->
+        ScanSheet(
+            title = if (mode == ScanMode.BARCODE) "Scan asset code" else "Scan label text",
+            mode = mode,
+            onDetected = { text ->
+                if (mode == ScanMode.BARCODE) vm.setAssetCode(text) else vm.setNoteOverride(text)
+                scanRequest = null
+            },
+            onDismiss = { scanRequest = null },
+        )
+    }
+    if (showPro) {
+        ProSheet(
+            state = state,
+            evStops = evStops,
+            onEv = { evStops = it; vm.setExposureCompensation(it) },
+            zoomRatio = zoomRatio,
+            zoomRange = vm.camera?.cameraInfo?.zoomState?.value?.let { it.minZoomRatio..it.maxZoomRatio },
+            onZoom = { zoomRatio = it; vm.setZoomRatio(it) },
+            onDismiss = { showPro = false },
+            onScanText = { scanRequest = ScanMode.TEXT },
+            onSetMode = vm::setCameraMode,
+            onSetLook = vm::setLook,
+            onForensic = vm::setForensicMark,
+            onSensorProof = vm::setSensorProof,
+        )
     }
     state.noteTarget?.let { photo ->
         QuickNoteDialog(initial = photo.note, onSkip = vm::dismissNote, onSave = vm::saveQuickNote)
@@ -401,10 +544,134 @@ private fun Thumbnail(path: String?, onClick: () -> Unit) {
         contentAlignment = Alignment.Center,
     ) {
         if (path != null) {
-            AsyncImage(model = File(path), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+            MediaThumb(path = path, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
         } else {
             Icon(Icons.Outlined.Collections, stringResource(R.string.nav_gallery), tint = Color.White)
         }
+    }
+}
+
+private fun CameraMode.toExtensionMode(): Int = when (this) {
+    CameraMode.NIGHT -> ExtensionMode.NIGHT
+    CameraMode.HDR -> ExtensionMode.HDR
+    CameraMode.BOKEH -> ExtensionMode.BOKEH
+    CameraMode.FACE_RETOUCH -> ExtensionMode.FACE_RETOUCH
+    CameraMode.AUTO -> ExtensionMode.NONE
+}
+
+@Composable
+private fun ModePill(label: String, selected: Boolean, icon: androidx.compose.ui.graphics.vector.ImageVector, onClick: () -> Unit) {
+    Row(
+        Modifier
+            .clip(RoundedCornerShape(999.dp))
+            .background(if (selected) PsColors.Accent else Color.White.copy(alpha = 0.08f))
+            .border(1.dp, if (selected) PsColors.Accent else Color.White.copy(alpha = 0.12f), RoundedCornerShape(999.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 7.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Icon(icon, null, tint = if (selected) PsColors.OnAccent else Color.White, modifier = Modifier.size(14.dp))
+        Text(label, style = MaterialTheme.typography.labelLarge, color = if (selected) PsColors.OnAccent else Color.White)
+    }
+}
+
+@Composable
+private fun RecordButton(recording: Boolean, onClick: () -> Unit) {
+    Box(
+        Modifier
+            .size(84.dp)
+            .clip(CircleShape)
+            .border(4.dp, Color.White, CircleShape)
+            .padding(7.dp)
+            .clip(if (recording) RoundedCornerShape(18.dp) else CircleShape)
+            .background(Color(0xFFB3261E))
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {}
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ProSheet(
+    state: CameraUiState,
+    evStops: Float,
+    onEv: (Float) -> Unit,
+    zoomRatio: Float,
+    zoomRange: ClosedFloatingPointRange<Float>?,
+    onZoom: (Float) -> Unit,
+    onDismiss: () -> Unit,
+    onScanText: () -> Unit,
+    onSetMode: (CameraMode) -> Unit,
+    onSetLook: (PhotoLook) -> Unit,
+    onForensic: (Boolean) -> Unit,
+    onSensorProof: (Boolean) -> Unit,
+) {
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = PsColors.Bg) {
+        Column(
+            Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            Text("Capture options", style = MaterialTheme.typography.titleMedium, color = PsColors.Text)
+
+            SheetSection("Camera mode") {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    state.supportedModes.forEach { mode ->
+                        PresetChip(label = mode.label, selected = state.settings.cameraMode == mode) { onSetMode(mode) }
+                    }
+                }
+            }
+
+            SheetSection("Look") {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    PhotoLook.entries.forEach { look ->
+                        PresetChip(label = look.label, selected = state.settings.look == look) { onSetLook(look) }
+                    }
+                }
+            }
+
+            SheetSection("Exposure compensation  ${"%+.1f".format(evStops)} EV") {
+                Slider(value = evStops, onValueChange = onEv, valueRange = -3f..3f)
+            }
+
+            zoomRange?.takeIf { it.endInclusive > it.start + 0.01f }?.let { range ->
+                SheetSection("Zoom  ${"%.1f".format(zoomRatio)}×") {
+                    Slider(value = zoomRatio, onValueChange = onZoom, valueRange = range)
+                }
+            }
+
+            SheetSection("Evidence") {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    SheetSwitch("Forensic watermark", "Invisible mark survives recompression", state.settings.forensicMark, onForensic)
+                    SheetSwitch("Sensor proof", "Embed accel/light/GNSS snapshot in credential", state.settings.sensorProof, onSensorProof)
+                    OutlinedButton(onClick = { onScanText(); onDismiss() }, modifier = Modifier.fillMaxWidth()) {
+                        Icon(Icons.Outlined.QrCodeScanner, null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Scan text label into note (OCR)")
+                    }
+                }
+            }
+            Spacer(Modifier.height(20.dp))
+        }
+    }
+}
+
+@Composable
+private fun SheetSection(title: String, content: @Composable () -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(title, style = MaterialTheme.typography.labelLarge, color = PsColors.TextDim)
+        content()
+    }
+}
+
+@Composable
+private fun SheetSwitch(label: String, hint: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text(label, style = MaterialTheme.typography.bodyLarge, color = PsColors.Text)
+            Text(hint, style = MaterialTheme.typography.bodySmall, color = PsColors.TextDim)
+        }
+        Switch(checked = checked, onCheckedChange = onChange)
     }
 }
 
@@ -443,13 +710,16 @@ private fun QuickNoteDialog(initial: String, onSkip: () -> Unit, onSave: (String
         onDismissRequest = onSkip,
         title = { Text(stringResource(R.string.quick_note_title)) },
         text = {
-            OutlinedTextField(
-                value = note,
-                onValueChange = { note = it },
-                placeholder = { Text(stringResource(R.string.quick_note_hint)) },
-                minLines = 2,
-                modifier = Modifier.fillMaxWidth(),
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                OutlinedTextField(
+                    value = note,
+                    onValueChange = { note = it },
+                    placeholder = { Text(stringResource(R.string.quick_note_hint)) },
+                    minLines = 2,
+                    modifier = Modifier.weight(1f),
+                )
+                VoiceNoteButton(onResult = { spoken -> note = listOf(note, spoken).filter { it.isNotBlank() }.joinToString(" ") })
+            }
         },
         confirmButton = { Button(onClick = { onSave(note) }) { Text(stringResource(R.string.save)) } },
         dismissButton = { TextButton(onClick = onSkip) { Text(stringResource(R.string.skip)) } },

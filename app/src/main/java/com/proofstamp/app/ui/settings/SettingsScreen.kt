@@ -51,9 +51,32 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
-class SettingsViewModel(private val container: AppContainer) : ViewModel() {
+class SettingsViewModel(val container: AppContainer) : ViewModel() {
     val settings: StateFlow<AppSettings> = container.settings.settings
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AppSettings())
+
+    /** Bumped after identity import/clear so the UI re-reads the signer state. */
+    val identityVersion = kotlinx.coroutines.flow.MutableStateFlow(0)
+    var identityError = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
+        private set
+
+    fun identitySubject(): String = container.c2paSigner.identitySubject()
+    fun hasTrustedIdentity(): Boolean = container.c2paSigner.hasTrustedIdentity()
+
+    fun importIdentity(chainUri: android.net.Uri, keyUri: android.net.Uri) = viewModelScope.launch {
+        val chain = container.contentResolverRead(chainUri)
+        val key = container.contentResolverRead(keyUri)
+        val err = if (chain == null || key == null) "Could not read selected files"
+        else container.c2paSigner.importTrustedIdentity(chain, key)
+        identityError.value = err
+        identityVersion.value++
+    }
+
+    fun clearIdentity() = viewModelScope.launch {
+        container.c2paSigner.clearTrustedIdentity()
+        identityError.value = null
+        identityVersion.value++
+    }
 
     private val repo get() = container.settings
     fun setTemplate(t: WatermarkTemplate) = viewModelScope.launch { repo.setTemplate(t) }
@@ -138,6 +161,10 @@ fun SettingsScreen(container: AppContainer, onOpenPresets: () -> Unit) {
             }
             Spacer(Modifier.height(16.dp))
 
+            SectionLabel("Signing identity")
+            SigningIdentityCard(vm)
+            Spacer(Modifier.height(16.dp))
+
             SectionLabel(stringResource(R.string.settings_about))
             PsCard {
                 Text(stringResource(R.string.settings_offline), style = MaterialTheme.typography.bodyMedium, color = PsColors.Text)
@@ -151,6 +178,63 @@ fun SettingsScreen(container: AppContainer, onOpenPresets: () -> Unit) {
             Spacer(Modifier.height(24.dp))
         }
         AdBanner()
+    }
+}
+
+/**
+ * Trusted-identity card: imports a CAWG/C2PA-trusted cert chain + private key
+ * (PEM) so captures show full "Trusted" status on public verifiers. Without it
+ * the app signs with a conformant self-signed cert — Valid but untrusted.
+ */
+@Composable
+private fun SigningIdentityCard(vm: SettingsViewModel) {
+    vm.identityVersion.collectAsStateWithLifecycle()
+    val error by vm.identityError.collectAsStateWithLifecycle()
+    var pendingChain by remember { mutableStateOf<android.net.Uri?>(null) }
+    var pendingKey by remember { mutableStateOf<android.net.Uri?>(null) }
+
+    val chainPicker = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.OpenDocument(),
+    ) { pendingChain = it }
+    val keyPicker = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.OpenDocument(),
+    ) { pendingKey = it }
+
+    PsCard {
+        Text("Identity", style = MaterialTheme.typography.labelMedium, color = PsColors.TextDim)
+        Spacer(Modifier.height(4.dp))
+        Text(vm.identitySubject(), style = MaterialTheme.typography.bodyMedium, color = PsColors.Text)
+        Spacer(Modifier.height(4.dp))
+        Text(
+            "With no imported certificate, captures sign Valid but untrusted on public C2PA verifiers. Import a CAWG/C2PA-issued chain (.pem) + EC private key (.pem) for full Trusted status.",
+            style = MaterialTheme.typography.bodySmall,
+            color = PsColors.TextDim,
+        )
+        Spacer(Modifier.height(10.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            androidx.compose.material3.OutlinedButton(onClick = { chainPicker.launch(arrayOf("*/*")) }) {
+                Text(if (pendingChain == null) "Chain .pem" else "Chain selected")
+            }
+            androidx.compose.material3.OutlinedButton(onClick = { keyPicker.launch(arrayOf("*/*")) }) {
+                Text(if (pendingKey == null) "Key .pem" else "Key selected")
+            }
+        }
+        if (pendingChain != null && pendingKey != null) {
+            Spacer(Modifier.height(8.dp))
+            androidx.compose.material3.Button(onClick = { vm.importIdentity(pendingChain!!, pendingKey!!) }) {
+                Text("Import identity")
+            }
+        }
+        if (vm.hasTrustedIdentity()) {
+            Spacer(Modifier.height(8.dp))
+            androidx.compose.material3.TextButton(onClick = vm::clearIdentity) {
+                Text("Remove trusted identity", color = PsColors.Warn)
+            }
+        }
+        error?.let {
+            Spacer(Modifier.height(6.dp))
+            Text(it, style = MaterialTheme.typography.bodySmall, color = PsColors.Warn)
+        }
     }
 }
 

@@ -20,6 +20,23 @@ enum class WatermarkTemplate(val label: String, val description: String) {
     REPORT("Report", "Full-width strip with project header"),
 }
 
+/** Color treatment applied to the final image at encode time (the credential covers the result). */
+enum class PhotoLook(val label: String) {
+    NATURAL("Natural"),
+    MONO("Mono"),
+    DOCUMENT("Document"),
+    VIVID("Vivid"),
+}
+
+/** Camera processing modes exposed via CameraX extensions where the device supports them. */
+enum class CameraMode(val label: String) {
+    AUTO("Auto"),
+    NIGHT("Night"),
+    HDR("HDR"),
+    BOKEH("Portrait"),
+    FACE_RETOUCH("Face"),
+}
+
 data class AppSettings(
     val operator: String = "",
     val defaultProject: String = "",
@@ -33,6 +50,12 @@ data class AppSettings(
     val exportCount: Int = 0,
     val lastInterstitialAt: Long = 0L,
     val onboarded: Boolean = false,
+    /** Embed the invisible forensic watermark keyed to the photo ID. */
+    val forensicMark: Boolean = true,
+    /** Embed the physical sensor snapshot (accel/light/pressure/GNSS) in the manifest. */
+    val sensorProof: Boolean = true,
+    val look: PhotoLook = PhotoLook.NATURAL,
+    val cameraMode: CameraMode = CameraMode.AUTO,
 )
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
@@ -51,6 +74,10 @@ class SettingsRepository(private val context: Context) {
         val EXPORT_COUNT = intPreferencesKey("export_count")
         val LAST_INTERSTITIAL = longPreferencesKey("last_interstitial")
         val ONBOARDED = booleanPreferencesKey("onboarded")
+        val FORENSIC = booleanPreferencesKey("forensic_mark")
+        val SENSOR_PROOF = booleanPreferencesKey("sensor_proof")
+        val LOOK = stringPreferencesKey("photo_look")
+        val CAM_MODE = stringPreferencesKey("camera_mode")
     }
 
     val settings: Flow<AppSettings> = context.dataStore.data.map { p ->
@@ -68,6 +95,10 @@ class SettingsRepository(private val context: Context) {
             exportCount = p[Keys.EXPORT_COUNT] ?: 0,
             lastInterstitialAt = p[Keys.LAST_INTERSTITIAL] ?: 0L,
             onboarded = p[Keys.ONBOARDED] ?: false,
+            forensicMark = p[Keys.FORENSIC] ?: true,
+            sensorProof = p[Keys.SENSOR_PROOF] ?: true,
+            look = p[Keys.LOOK]?.let { runCatching { PhotoLook.valueOf(it) }.getOrNull() } ?: PhotoLook.NATURAL,
+            cameraMode = p[Keys.CAM_MODE]?.let { runCatching { CameraMode.valueOf(it) }.getOrNull() } ?: CameraMode.AUTO,
         )
     }
 
@@ -85,6 +116,10 @@ class SettingsRepository(private val context: Context) {
     suspend fun setGpsEnabled(v: Boolean) = context.dataStore.edit { it[Keys.GPS] = v }
     suspend fun setStripGpsOnShare(v: Boolean) = context.dataStore.edit { it[Keys.STRIP_GPS] = v }
     suspend fun setOnboarded() = context.dataStore.edit { it[Keys.ONBOARDED] = true }
+    suspend fun setForensicMark(v: Boolean) = context.dataStore.edit { it[Keys.FORENSIC] = v }
+    suspend fun setSensorProof(v: Boolean) = context.dataStore.edit { it[Keys.SENSOR_PROOF] = v }
+    suspend fun setLook(v: PhotoLook) = context.dataStore.edit { it[Keys.LOOK] = v.name }
+    suspend fun setCameraMode(v: CameraMode) = context.dataStore.edit { it[Keys.CAM_MODE] = v.name }
 
     /** Increments export counter and returns the new value. */
     suspend fun incrementExportCount(): Int {

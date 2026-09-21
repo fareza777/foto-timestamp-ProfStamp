@@ -68,6 +68,7 @@ import com.proofstamp.app.share.ShareMode
 import com.proofstamp.app.share.VerifyResult
 import com.proofstamp.app.ui.components.CredentialsCard
 import com.proofstamp.app.ui.components.KeyValueRow
+import com.proofstamp.app.ui.components.MediaThumb
 import com.proofstamp.app.ui.components.PsCard
 import com.proofstamp.app.ui.components.SectionLabel
 import com.proofstamp.app.ui.components.StatusPill
@@ -162,11 +163,10 @@ fun PhotoDetailScreen(container: AppContainer, photoId: String, onBack: () -> Un
         }
 
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).navigationBarsPadding()) {
-            AsyncImage(
-                model = File(p.filePath),
-                contentDescription = p.id,
+            MediaThumb(
+                path = p.filePath,
                 contentScale = ContentScale.Fit,
-                modifier = Modifier.fillMaxWidth().aspectRatio(p.width.toFloat() / p.height.coerceAtLeast(1)).clip(RoundedCornerShape(16.dp)).background(PsColors.Surface),
+                modifier = Modifier.fillMaxWidth().aspectRatio((p.width.coerceAtLeast(1)).toFloat() / p.height.coerceAtLeast(1)).clip(RoundedCornerShape(16.dp)).background(PsColors.Surface),
             )
             Spacer(Modifier.height(16.dp))
 
