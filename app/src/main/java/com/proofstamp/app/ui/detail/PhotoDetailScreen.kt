@@ -64,6 +64,7 @@ import com.proofstamp.app.data.c2pa.C2paState
 import com.proofstamp.app.data.crypto.Ids
 import com.proofstamp.app.data.db.PhotoEntity
 import com.proofstamp.app.di.AppContainer
+import com.proofstamp.app.share.ProofQr
 import com.proofstamp.app.share.ShareMode
 import com.proofstamp.app.share.VerifyResult
 import com.proofstamp.app.ui.components.CredentialsCard
@@ -176,7 +177,9 @@ fun PhotoDetailScreen(container: AppContainer, photoId: String, onBack: () -> Un
             SectionLabel(stringResource(R.string.c2pa_section))
             PsCard {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    val qr = remember(p.id) { QrGenerator.generate("proofstamp:${p.id}:${p.capturedAt}", 384).asImageBitmap() }
+                    val qr = remember(p.id) {
+                        QrGenerator.generate(ProofQr.build(p.id, p.capturedAt, p.verificationCode), 384).asImageBitmap()
+                    }
                     Image(bitmap = qr, contentDescription = stringResource(R.string.verified_capture), modifier = Modifier.size(96.dp).clip(RoundedCornerShape(8.dp)))
                     Column(Modifier.weight(1f)) {
                         if (p.c2pa || verify?.c2pa?.state == C2paState.VALID) {

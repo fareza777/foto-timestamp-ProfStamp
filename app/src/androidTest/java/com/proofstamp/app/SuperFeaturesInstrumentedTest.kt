@@ -106,6 +106,40 @@ class SuperFeaturesInstrumentedTest {
         )
     }
 
+    /** Photographic-ish content (smooth gradients + fine noise) at real capture size —
+     *  the original failure mode where scene texture + rescaled grids hid the mark. */
+    private fun photoLikeBitmap(w: Int = 1392, h: Int = 1856, seed: Long = 3): Bitmap {
+        val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        val rng = Random(seed)
+        val px = IntArray(w * h)
+        for (y in 0 until h) {
+            for (x in 0 until w) {
+                // Smooth gradient + per-pixel noise ≈ real scene texture
+                val r = (x * 200 / w + rng.nextInt(12)).coerceIn(0, 255)
+                val g = (y * 180 / h + rng.nextInt(12)).coerceIn(0, 255)
+                val b = (128 + 40 * kotlin.math.sin(x / 90.0) + rng.nextInt(14)).toInt().coerceIn(0, 255)
+                px[y * w + x] = (0xFF shl 24) or (r shl 16) or (g shl 8) or b
+            }
+        }
+        bmp.setPixels(px, 0, w, 0, 0, w, h)
+        return bmp
+    }
+
+    @Test
+    fun watermark_detectsOnPhotoLikeImage_andAfterResize() {
+        val id = "PS-MARK-0003"
+        val bmp = photoLikeBitmap()
+        WatermarkCodec.embed(bmp, id)
+        val atNative = WatermarkCodec.detect(bmp, id)
+        assertTrue("detect at capture size: $atNative", atNative >= WatermarkCodec.DETECT_THRESHOLD)
+        // Resized derivative (e.g. a shared/compressed copy) must still match.
+        val resized = Bitmap.createScaledBitmap(bmp, 696, 928, true)
+        val atHalf = WatermarkCodec.detect(resized, id)
+        assertTrue("detect after 50% resize: $atHalf", atHalf >= WatermarkCodec.DETECT_THRESHOLD)
+        // An unmarked photo-like image must not.
+        assertTrue(WatermarkCodec.detect(photoLikeBitmap(seed = 7), id) < WatermarkCodec.DETECT_THRESHOLD)
+    }
+
     // ---------------- QR payload ----------------
 
     @Test
