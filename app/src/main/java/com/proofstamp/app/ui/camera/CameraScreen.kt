@@ -16,6 +16,7 @@ import androidx.camera.core.resolutionselector.ResolutionSelector
 import androidx.camera.extensions.ExtensionMode
 import androidx.camera.extensions.ExtensionsManager
 import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.video.FallbackStrategy
 import androidx.camera.video.Quality
 import androidx.camera.video.QualitySelector
 import androidx.camera.video.Recorder
@@ -190,8 +191,17 @@ private fun CameraContent(
     LaunchedEffect(state.flashMode) { imageCapture.flashMode = state.flashMode }
 
     val videoCapture = remember {
+        // FHD preferred but drop to whatever the device's encoder profiles support — some
+        // devices/emulators advertise none and a fixed quality would fail the whole bind.
         VideoCapture.withOutput(
-            Recorder.Builder().setQualitySelector(QualitySelector.from(Quality.FHD)).build(),
+            Recorder.Builder()
+                .setQualitySelector(
+                    QualitySelector.from(
+                        Quality.FHD,
+                        FallbackStrategy.lowerQualityOrHigherThan(Quality.FHD),
+                    ),
+                )
+                .build(),
         )
     }
 
@@ -216,8 +226,11 @@ private fun CameraContent(
         val baseSelector = CameraSelector.Builder().requireLensFacing(state.lensFacing).build()
 
         // CameraX vendor extensions (Night/HDR/Bokeh/FaceRetouch) where the device supports them.
+        // Bounded wait: the extender init can hang on devices without an extensions impl.
         val selector = runCatching {
-            val ext = ExtensionsManager.getInstanceAsync(context, provider).await()
+            val ext = kotlinx.coroutines.withTimeoutOrNull(2_000) {
+                ExtensionsManager.getInstanceAsync(context, provider).await()
+            } ?: return@runCatching baseSelector
             val supported = CameraMode.entries.filter { mode ->
                 mode == CameraMode.AUTO || ext.isExtensionAvailable(baseSelector, mode.toExtensionMode())
             }
@@ -235,13 +248,24 @@ private fun CameraContent(
             .build()
             .also { it.surfaceProvider = previewView.surfaceProvider }
         provider.unbindAll()
+        // VideoCapture binds only in video mode — on devices with no usable encoder
+        // profiles it would otherwise sink the whole camera bind, photo included.
         vm.camera = runCatching {
             if (state.videoMode) {
-                provider.bindToLifecycle(lifecycleOwner, selector, preview, videoCapture)
-            } else {
                 provider.bindToLifecycle(lifecycleOwner, selector, preview, imageCapture, videoCapture)
+            } else {
+                provider.bindToLifecycle(lifecycleOwner, selector, preview, imageCapture)
             }
-        }.getOrNull()
+        }.onFailure {
+            android.util.Log.e("CameraScreen", "camera bind failed", it)
+        }.getOrNull() ?: if (state.videoMode) {
+            // Video bind failed (e.g. no encoder profiles): fall back to still capture so
+            // photo mode keeps working; recording will report its own error on start.
+            runCatching {
+                provider.bindToLifecycle(lifecycleOwner, selector, preview, imageCapture)
+            }.onFailure { android.util.Log.e("CameraScreen", "fallback bind failed", it) }
+                .getOrNull()
+        } else null
     }
 
     Column(Modifier.fillMaxSize()) {
